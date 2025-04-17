@@ -8,9 +8,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
-
+import GHC.Float (castFloatToWord32)
 import Control.Monad
 import Control.Monad.IO.Class
+import GHC.Float(int2Float)
 import Data.Bits
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -114,6 +115,8 @@ renderFmtChunk :: Header -> ByteString
 renderFmtChunk header@Header {..} =
   B.pack $ fromWord16le af ++ fromWord16le noc ++ fromWord32le sl ++ fromWord32le bl ++ fromWord16le ba ++ fromWord16le bps
 
+fromFloat :: Float -> [Word8]
+fromFloat f =  fromWord32le $ castFloatToWord32 f
 
 writeWave ::
     Handle ->
@@ -180,8 +183,59 @@ writeWaveFile ::
 writeWaveFile path wave header writeData = liftIO . withBinaryFile path WriteMode $ \h ->
   writeWave h wave header writeData >>= (\h' -> hClose h)
 
-main :: IO ()
-main = writeWaveFile "C:/Users/i5-32/Desktop/polynomial_wave/wav.wav" defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 1000000 $ cycle (body 1000)))
+---------------------------------------------------------------------------------
 
-body :: Int -> [Word8]
-body i =  (fromIntegral $ round (100*cos (2 * (22/7) * (fromIntegral i :: Float))) ::Word8 ): body (i - 1)
+saveWave :: String -> [Float] ->  IO ()
+saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 1000 (cycle (concatMap fromFloat f))))
+
+
+polynomial :: [Float] -> Float ->  Float
+polynomial (i:is) x = i * (x ** int2Float (length (i:is) -1)) + polynomial is x
+polynomial [] x = 0
+
+fxList :: [Float] -> [Float] -> [Float]
+fxList xs f = map (polynomial f) xs
+
+interval :: Float -> Float -> Int -> [Float]
+interval a b i = map ((+a) . (/(b-a)) ) $ take i [0, 1..]
+
+coefficients :: Int -> [Int] -> IO [Int]
+coefficients i its = do
+    putStr ("coefficient of x^" ++ show (i-1) ++ ": ")
+    num <- getLine
+    let n = read num :: Int
+    if i == 1 then return $ n : its else coefficients (i-1) (n : its)
+
+graph :: [Float] -> String
+graph y = show (normalize y) ++ concatMap ((++ "\n") . (\x -> "*" ++ replicate (round x) ' ')) (normalize y)
+
+normalize :: [Float] -> [Float]
+normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
+
+polynomialIO :: String -> IO ()
+polynomialIO dir = do
+    putStr "file name: "
+    fileName <- getLine
+    putStr "Interval start: "
+    from' <- getLine
+    putStr "Interval end: "
+    to' <- getLine
+    putStr "Interval interval: "
+    term' <- getLine  
+    putStr "degree: "
+    degree' <- getLine
+    let from = read from' ::Float
+        to = read to' ::Float
+        degree = read degree' ::Int
+        term = read term' ::Int
+        xlist = interval from to term
+    clist <- coefficients degree []
+    let ylist = fxList xlist (map int2Float clist)
+    putStrLn $ graph ylist
+    saveWave (dir ++ "/" ++ fileName) ylist
+    
+main :: IO ()
+main = do 
+    putStr "dir: "
+    dir <- getLine 
+    forever $ polynomialIO dir 
