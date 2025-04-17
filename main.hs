@@ -1,6 +1,7 @@
 -----------------------------------------
--- some codes are from Codec.Audio.Wave © 2016–present Mark Karpov, License:  BSD 3 clause
 -- stack and cabal are not worked.
+-- some codes are from Codec.Audio.Wave © 2016–present Mark Karpov, License:  BSD 3 clause
+-- it is modified since it has dependency
 -----------------------------------------
 
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -8,10 +9,9 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
-import GHC.Float (castFloatToWord32)
+import GHC.Float ( castFloatToWord32, int2Float )
 import Control.Monad
 import Control.Monad.IO.Class
-import GHC.Float(int2Float)
 import Data.Bits
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -20,6 +20,7 @@ import Data.Set qualified as E
 import Data.Typeable
 import Data.Word
 import System.IO
+import Text.Read (readMaybe)
 
 data Wave = Wave
   {waveSampleRate :: !Word32,
@@ -116,7 +117,7 @@ renderFmtChunk header@Header {..} =
   B.pack $ fromWord16le af ++ fromWord16le noc ++ fromWord32le sl ++ fromWord32le bl ++ fromWord16le ba ++ fromWord16le bps
 
 fromFloat :: Float -> [Word8]
-fromFloat f =  fromWord32le $ castFloatToWord32 f
+fromFloat f =  drop 2 (fromWord32le $ castFloatToWord32 f)
 
 writeWave ::
     Handle ->
@@ -183,10 +184,9 @@ writeWaveFile ::
 writeWaveFile path wave header writeData = liftIO . withBinaryFile path WriteMode $ \h ->
   writeWave h wave header writeData >>= (\h' -> hClose h)
 
----------------------------------------------------------------------------------
 
 saveWave :: String -> [Float] ->  IO ()
-saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 1000 (cycle (concatMap fromFloat f))))
+saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 500000 (cycle (concatMap fromFloat f))))
 
 
 polynomial :: [Float] -> Float ->  Float
@@ -202,8 +202,7 @@ interval a b i = map ((+a) . (/(b-a)) ) $ take i [0, 1..]
 coefficients :: Int -> [Int] -> IO [Int]
 coefficients i its = do
     putStr ("coefficient of x^" ++ show (i-1) ++ ": ")
-    num <- getLine
-    let n = read num :: Int
+    n <- inputInt
     if i == 1 then return $ n : its else coefficients (i-1) (n : its)
 
 graph :: [Float] -> String
@@ -212,30 +211,87 @@ graph y = show (normalize y) ++ concatMap ((++ "\n") . (\x -> "*" ++ replicate (
 normalize :: [Float] -> [Float]
 normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
 
+normalize65535 :: [Float] -> [Float]
+normalize65535 ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
+
+
+inputStr :: IO String
+inputStr = do
+    str <- getLine
+    case str of
+        [] -> putStr "enter something: " >> inputStr
+        _ -> return str
+
+inputInt :: IO Int
+inputInt = do
+    str <- getLine
+    case readMaybe str ::Maybe Int of
+        Just s -> return s
+        Nothing -> putStr "enter INT: " >> inputInt
+
+inputFloat :: IO Float
+inputFloat = do
+    str <- getLine
+    case readMaybe str :: Maybe Float of
+        Just s -> return s
+        Nothing -> putStr "enter Float: " >> inputFloat
+
+asciiart :: IO ()
+asciiart = putStrLn $ concatMap (++ "\n")
+ [   "_______ _______ ___    __   __ __    _ _______ __   __ ___ _______ ___     "
+    ,"|       |       |   |  |  | |  |  |  | |       |  |_|  |   |   _   |   |    "
+    ,"|    _  |   _   |   |  |  |_|  |   |_| |   _   |       |   |  |_|  |   |    "
+    ,"|   |_| |  | |  |   |  |       |       |  | |  |       |   |       |   |    "
+    ,"|    ___|  |_|  |   |__|_     _|  _    |  |_|  |       |   |       |   |___ "
+    ,"|   |   |       |       ||   | | | |   |       | ||_|| |   |   _   |       |"
+    ,"|___|   |_______|_______||___| |_|  |__|_______|_|   |_|___|__| |__|_______|"
+    ," _     _ _______ __   __ _______                                            "
+    ,"| | _ | |   _   |  | |  |       |                                           "
+    ,"| || || |  |_|  |  |_|  |    ___|                                           "
+    ,"|       |       |       |   |___                                            "
+    ,"|       |       |       |    ___|                                           "
+    ,"|   _   |   _   ||     ||   |___                                            "
+    ,"|__| |__|__| |__| |___| |_______|                                           "
+    ," _______ _______ ______                                                     "
+    ,"|       |       |    _ |                                                    "
+    ,"|    ___|   _   |   | ||                                                    "
+    ,"|   |___|  | |  |   |_||_                                                   "
+    ,"|    ___|  |_|  |    __  |                                                  "
+    ,"|   |   |       |   |  | |                                                  "
+    ,"|___|   |_______|___|  |_|                                                  "
+    ," __   __ _______ _______ __   __                                            "
+    ,"|  | |  |       |   _   |  | |  |                                           "
+    ,"|  | |  |_     _|  |_|  |  | |  |                                           "
+    ,"|  |_|  | |   | |       |  |_|  |                                           "
+    ,"|       | |   | |       |       |                                           "
+    ,"|       | |   | |   _   |       |                                           "
+    ,"|_______| |___| |__| |__|_______|                                           "
+    ]
 polynomialIO :: String -> IO ()
 polynomialIO dir = do
     putStr "file name: "
-    fileName <- getLine
+    fileName <- inputStr
     putStr "Interval start: "
-    from' <- getLine
+    from <- inputFloat
     putStr "Interval end: "
-    to' <- getLine
+    to <- inputFloat
     putStr "Interval interval: "
-    term' <- getLine  
+    term <- inputInt
     putStr "degree: "
-    degree' <- getLine
-    let from = read from' ::Float
-        to = read to' ::Float
-        degree = read degree' ::Int
-        term = read term' ::Int
+    degree' <- inputInt
+    let degree = degree' +1
         xlist = interval from to term
     clist <- coefficients degree []
     let ylist = fxList xlist (map int2Float clist)
-    putStrLn $ graph ylist
-    saveWave (dir ++ "/" ++ fileName) ylist
-    
+    saveWave (dir ++ "/" ++ fileName ++ ".wav") ylist
+    putStrLn "file saved. enter next file name"
+
 main :: IO ()
-main = do 
-    putStr "dir: "
-    dir <- getLine 
-    forever $ polynomialIO dir 
+main = do
+    hSetBuffering stdin NoBuffering
+    hSetBuffering stdout NoBuffering
+    asciiart
+    putStrLn "welcome to the polynomial wave"
+    putStr "file save dir: "
+    dir <- getLine
+    forever $ polynomialIO dir
