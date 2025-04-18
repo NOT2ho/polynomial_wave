@@ -201,12 +201,12 @@ fxList :: [Float] -> [Float] -> [Float]
 fxList xs f = map (polynomial f) xs
 
 interval :: Float -> Float -> Int -> [Float]
-interval a b i = map ((+a) . (/(b-a)) . (/ int2Float i)) $ take i [0, 1..]
+interval a b i =map ((+a) . (*(b-a)) . (/ int2Float i)) (take i [0, 1..]) ++[b]
 
-coefficients :: Int -> [Int] -> IO [Int]
+coefficients :: Int -> [Float] -> IO [Float]
 coefficients i its = do
     putStr ("coefficient of x^" ++ show (i-1) ++ ": ")
-    n <- inputInt
+    n <- inputFloat
     if i == 1 then return $ n : its else coefficients (i-1) (n : its)
 
 graph :: [Float] -> String
@@ -216,7 +216,7 @@ normalize :: [Float] -> [Float]
 normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
 
 normalize65535 :: [Float] -> [Int]
-normalize65535 ys = map ( round . (+ (-32767)) .(*65535) . (/(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
+normalize65535 ys = map ( round . (+ (-32768)) .(*65535) . (/(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
 
 
 inputStr :: IO String
@@ -287,8 +287,11 @@ polynomialIO dir = do
         xlist = interval from to term
     clist' <- coefficients degree []
     let clist = reverse clist'
-    let ylist = fxList xlist (map int2Float clist)
+    let ylist = fxList xlist clist
+    print clist
+    print xlist
     print $ normalize65535 ylist
+    print ylist
     saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
     putStrLn "file saved. enter next file name"
 
