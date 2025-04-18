@@ -218,6 +218,44 @@ normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` 
 normalize65535 :: [Float] -> [Int]
 normalize65535 ys = map ( round . (+ (-32768)) .(*65535) . (/(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
 
+aSin :: Float -> Int -> Int ->  [Float]
+aSin a n f = map ((* a) . sin . (* int2Float n) . (* (44/7)) . (/ int2Float f)) [0..int2Float f]
+
+bCos :: Float -> Int ->  Int -> [Float]
+bCos a n f = map ((* a) . cos . (* int2Float n) . (* (44/7)) . (/ int2Float f)) [0..int2Float f]
+
+fourier :: Float -> Float -> Int ->  Int -> [Float]
+fourier a b n f = zipWith (+) (aSin a n f) (bCos b n f)
+
+series :: [(Float, Float)] -> Int -> [Float]
+series (c:cs) f =  zipWith (+) (uncurry fourier c (length (c:cs)) f) (series cs f)
+series [] _ = [0, 0..]
+
+fourierCoef :: Int -> [(Float, Float)] -> IO [(Float, Float)]
+fourierCoef i its = do
+    putStr ("coefficient of sin " ++ show (i-1) ++ "x: ")
+    n <- inputFloat
+    putStr ("coefficient of cos " ++ show (i-1) ++ "x: ")
+    n2 <- inputFloat
+    if i == 1 then return $ (n,n2) : its else fourierCoef (i-1) ((n,n2) : its)
+
+fourierIO :: String -> IO ()
+fourierIO dir = do
+  putStr "file name: "
+  fileName <- inputStr
+  putStr "period: "
+  term <- inputInt
+  putStr "how much sum (0-n): "
+  n' <- inputInt
+  let n= n' +1
+  clist' <- fourierCoef n []
+  let clist = reverse clist'
+  let ylist = series clist term
+  print clist
+  print $ normalize65535 ylist
+  print ylist
+  saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
+  putStrLn "file saved. enter next file name"
 
 inputStr :: IO String
 inputStr = do
@@ -301,9 +339,19 @@ main = do
     hSetBuffering stdout NoBuffering
     asciiart
     putStrLn "welcome to the polynomial wave"
-    putStrLn "ver0.0.1"
+    putStrLn "ver0.0.2"
     putStrLn "bug fixed : reversed coefficient list, float to word16 issue, normalize to 32767"
+    putStrLn "update : add fourier series"
     putStrLn "***************************************************************"
     putStr "file save dir: "
     dir <- getLine
-    forever $ polynomialIO dir
+    select dir
+
+select :: String -> IO ()
+select dir = do
+    putStr "enter 0 to polynomial, enter 1 to fourier series: "
+    n <- inputInt
+    case n of 
+      0 -> forever $ polynomialIO dir
+      1 -> forever $ fourierIO dir 
+      _ -> select dir
