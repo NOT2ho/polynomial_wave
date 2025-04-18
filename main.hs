@@ -216,7 +216,7 @@ normalize :: [Float] -> [Float]
 normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
 
 normalize65535 :: [Float] -> [Int]
-normalize65535 ys = map ( round .(`subtract` 32767) .(*65535) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
+normalize65535 ys = map ( round . (+ (-32767)) .(*65535) . (/(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
 
 
 inputStr :: IO String
@@ -288,6 +288,7 @@ polynomialIO dir = do
     clist' <- coefficients degree []
     let clist = reverse clist'
     let ylist = fxList xlist (map int2Float clist)
+    print $ normalize65535 ylist
     saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
     putStrLn "file saved. enter next file name"
 
