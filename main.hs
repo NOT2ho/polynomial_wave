@@ -117,7 +117,11 @@ renderFmtChunk header@Header {..} =
   B.pack $ fromWord16le af ++ fromWord16le noc ++ fromWord32le sl ++ fromWord32le bl ++ fromWord16le ba ++ fromWord16le bps
 
 fromFloat :: Float -> [Word8]
-fromFloat f =  drop 2 (fromWord32le $ castFloatToWord32 f)
+fromFloat f =  take 2 (fromWord32le $ castFloatToWord32 f)
+
+fromInt :: Int -> [Word8]
+fromInt i = fromWord16le (fromIntegral i :: Word16)
+
 
 writeWave ::
     Handle ->
@@ -185,8 +189,8 @@ writeWaveFile path wave header writeData = liftIO . withBinaryFile path WriteMod
   writeWave h wave header writeData >>= (\h' -> hClose h)
 
 
-saveWave :: String -> [Float] ->  IO ()
-saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 500000 (cycle (concatMap fromFloat f))))
+saveWave :: String -> [Int] ->  IO ()
+saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 500000 (cycle (concatMap fromInt f))))
 
 
 polynomial :: [Float] -> Float ->  Float
@@ -197,7 +201,7 @@ fxList :: [Float] -> [Float] -> [Float]
 fxList xs f = map (polynomial f) xs
 
 interval :: Float -> Float -> Int -> [Float]
-interval a b i = map ((+a) . (/(b-a)) ) $ take i [0, 1..]
+interval a b i = map ((+a) . (/(b-a)) . (/ int2Float i)) $ take i [0, 1..]
 
 coefficients :: Int -> [Int] -> IO [Int]
 coefficients i its = do
@@ -211,8 +215,8 @@ graph y = show (normalize y) ++ concatMap ((++ "\n") . (\x -> "*" ++ replicate (
 normalize :: [Float] -> [Float]
 normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
 
-normalize65535 :: [Float] -> [Float]
-normalize65535 ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
+normalize65535 :: [Float] -> [Int]
+normalize65535 ys = map ( round .(`subtract` 32767) .(*65535) . (/(maximum ys - minimum ys)) . ( `subtract` minimum ys)) ys
 
 
 inputStr :: IO String
@@ -237,7 +241,7 @@ inputFloat = do
         Nothing -> putStr "enter Float: " >> inputFloat
 
 asciiart :: IO ()
-asciiart = putStrLn $ concatMap (++ "\n")
+asciiart = putStrLn $ unlines
  [   "_______ _______ ___    __   __ __    _ _______ __   __ ___ _______ ___     "
     ,"|       |       |   |  |  | |  |  |  | |       |  |_|  |   |   _   |   |    "
     ,"|    _  |   _   |   |  |  |_|  |   |_| |   _   |       |   |  |_|  |   |    "
@@ -281,9 +285,10 @@ polynomialIO dir = do
     degree' <- inputInt
     let degree = degree' +1
         xlist = interval from to term
-    clist <- coefficients degree []
+    clist' <- coefficients degree []
+    let clist = reverse clist'
     let ylist = fxList xlist (map int2Float clist)
-    saveWave (dir ++ "/" ++ fileName ++ ".wav") ylist
+    saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
     putStrLn "file saved. enter next file name"
 
 main :: IO ()
@@ -292,6 +297,9 @@ main = do
     hSetBuffering stdout NoBuffering
     asciiart
     putStrLn "welcome to the polynomial wave"
+    putStrLn "ver0.0.1"
+    putStrLn "bug fixed : reversed coefficient list, float to word16 issue, normalize to 32767"
+    putStrLn "***************************************************************"
     putStr "file save dir: "
     dir <- getLine
     forever $ polynomialIO dir
