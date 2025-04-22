@@ -192,6 +192,9 @@ writeWaveFile path wave header writeData = liftIO . withBinaryFile path WriteMod
 saveWave :: String -> [Int] ->  IO ()
 saveWave s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack $ take 500000 (cycle (concatMap fromInt f))))
 
+saveWaveParted :: String -> [Int] ->  IO ()
+saveWaveParted s f = writeWaveFile s defaultWave defaultHeader (\h -> B.hPut h (B.pack (concatMap fromInt f)))
+
 
 polynomial :: [Float] -> Float ->  Float
 polynomial (i:is) x = i * (x ** int2Float (length (i:is) -1)) + polynomial is x
@@ -217,6 +220,9 @@ normalize ys = map ( (*10) . (+1) . (/(maximum ys - minimum ys)) . ( `subtract` 
 
 normalize65535 :: [Float] -> [Int]
 normalize65535 ys = map ( round . (+ (-32768)) .(*65535) . (/(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
+
+normalize65535Int :: [Int] -> [Int]
+normalize65535Int ys = map ((+ (-32768)) .(*65535) . (`div`(maximum ys - minimum ys)) . ( + (- minimum ys))) ys
 
 aSin :: Float -> Int -> Int ->  [Float]
 aSin a n f = map ((* a) . sin . (* int2Float n) . (* (44/7)) . (/ int2Float f)) [0..int2Float f]
@@ -256,6 +262,21 @@ fourierIO dir = do
   print ylist
   saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
   putStrLn "file saved. enter next file name"
+
+fourierIOPart :: Int -> Int -> IO [Int]
+fourierIOPart i v = do
+  putStr "period: "
+  term <- inputInt
+  putStr "how much sum (0-n): "
+  n' <- inputInt
+  let n= n' +1
+  clist' <- fourierCoef n []
+  let clist = reverse clist'
+  let ylist = take i $ cycle (series clist term)
+  print clist
+  print (series clist term)
+  return $ map (`div` v) $ normalize65535 ylist
+
 
 inputStr :: IO String
 inputStr = do
@@ -309,6 +330,41 @@ asciiart = putStrLn $ unlines
     ,"|       | |   | |   _   |       |                                           "
     ,"|_______| |___| |__| |__|_______|                                           "
     ]
+
+
+partedIO :: String -> IO ()
+partedIO dir = do
+  putStr "file name: "
+  fileName <- inputStr
+  putStrLn "front part generation"
+  putStr "front part length(*44100): "
+  i <- inputInt
+  putStr "front part volume(/1), it is reciprocal: "
+  v <- inputInt
+  front <- select' i v
+  putStrLn "front part generated."
+  putStrLn "tail ganeration"
+  putStr "tail length(*44100): "
+  i' <- inputInt
+  putStr "tail volume(/1), it is reciprocal: "
+  v' <- inputInt
+  tail <- select' i' v'
+  putStrLn "tail generated."
+  putStr "fade length(*44100): "
+  i'' <- inputInt
+  putStr "fade scale(/1), it is reciprocal: "
+  v'' <- inputInt
+  let faded = front ++ fade v'' i'' front tail ++ tail
+  saveWaveParted (dir ++ "/" ++ fileName ++ ".wav") faded
+  putStrLn "file saved. enter next file name"
+
+
+fade :: Int -> Int -> [Int] -> [Int] -> [Int]
+fade v 0 a b= []
+fade v i (l:ist) (li:st) = ((l+li)`div` v) :fade v (i-1) ist st
+fade _ _ [] [] = []
+
+
 polynomialIO :: String -> IO ()
 polynomialIO dir = do
     putStr "file name: "
@@ -333,25 +389,63 @@ polynomialIO dir = do
     saveWave (dir ++ "/" ++ fileName ++ ".wav") $ normalize65535 ylist
     putStrLn "file saved. enter next file name"
 
+polynomialIOPart :: Int -> Int -> IO [Int]
+polynomialIOPart i v = do
+    putStr "Interval start: "
+    from <- inputFloat
+    putStr "Interval end: "
+    to <- inputFloat
+    putStr "Interval interval: "
+    term <- inputInt
+    putStr "degree: "
+    degree' <- inputInt
+    let degree = degree' +1
+        xlist = interval from to term
+    clist' <- coefficients degree []
+    let clist = reverse clist'
+    let ylist = take i $ cycle (fxList xlist clist)
+    print clist
+    print xlist
+    print (fxList xlist clist)
+    return $ map (`div` v) $ normalize65535 ylist
+
 main :: IO ()
 main = do
     hSetBuffering stdin NoBuffering
     hSetBuffering stdout NoBuffering
     asciiart
     putStrLn "welcome to the polynomial wave"
-    putStrLn "ver0.0.2"
+    putStrLn "ver0.0.5"
     putStrLn "bug fixed : reversed coefficient list, float to word16 issue, normalize to 32767"
-    putStrLn "update : add fourier series"
+    putStrLn "update : add 2-parted wav"
     putStrLn "***************************************************************"
     putStr "file save dir: "
     dir <- getLine
-    select dir
+    superSelect dir
+
+superSelect :: String -> IO ()
+superSelect dir = do
+    putStr "enter 0 to simple wave, enter 1 to two-parted wav: "
+    n <- inputInt
+    case n of
+      0 -> select dir
+      1 -> forever $ partedIO dir
+      _ -> superSelect dir
 
 select :: String -> IO ()
 select dir = do
     putStr "enter 0 to polynomial, enter 1 to fourier series: "
     n <- inputInt
-    case n of 
+    case n of
       0 -> forever $ polynomialIO dir
-      1 -> forever $ fourierIO dir 
+      1 -> forever $ fourierIO dir
       _ -> select dir
+
+select' :: Int -> Int -> IO [Int]
+select' i v  = do
+    putStr "enter 0 to generate polynomial, or enter 1 to generate fourier series: "
+    n <- inputInt
+    case n of
+      0 -> polynomialIOPart i v
+      1 -> fourierIOPart i v
+      _ -> select' i v
